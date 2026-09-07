@@ -24,8 +24,14 @@ describe('normalizeTzPhone', () => {
     expect(() => normalizeTzPhone('+254712345678')).toThrow(InvalidPhoneNumberError);
   });
 
+  it('accepts 06x prefixes (Halotel, Airtel)', () => {
+    expect(normalizeTzPhone('0682345678')).toBe('+255682345678');
+    expect(normalizeTzPhone('0692345678')).toBe('+255692345678');
+  });
+
   it('rejects invalid prefixes', () => {
-    expect(() => normalizeTzPhone('0692345678')).toThrow(InvalidPhoneNumberError);
+    expect(() => normalizeTzPhone('0501234567')).toThrow(InvalidPhoneNumberError);
+    expect(() => normalizeTzPhone('0801234567')).toThrow(InvalidPhoneNumberError);
   });
 
   it('rejects garbage input', () => {
