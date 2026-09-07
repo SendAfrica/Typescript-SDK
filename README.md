@@ -30,22 +30,38 @@ simple for a first integration, enough control for production use.
 
 ---
 
-## Install
+## Installing
 
 ```bash
 npm install sendafrica
 ```
 
-```bash
-yarn add sendafrica
-```
-
-```bash
-pnpm add sendafrica
-```
-
 **Requirements:** Node 18+ (uses global `fetch`). For Node < 16, inject a
 custom `fetch` implementation.
+
+---
+
+## Prerequisites for Publishing
+
+1. Ensure you're logged in to npm: `npm login` (if needed)
+2. Ensure you have publish rights for the `sendafrica` package on npm
+3. Bump the version in `package.json` (following SemVer — we use 1.1.0 to match the Python SDK)
+4. Run the full verification:
+   ```bash
+   npm run typecheck
+   npm test
+   npm run build
+   ```
+5. Publish:
+   ```bash
+   npm publish
+   ```
+   Or for scoped releases / beta tags:
+   ```bash
+   npm publish --access public
+   ```
+
+> **Note:** The `prepublishOnly` script runs `typecheck`, `test`, and `build` automatically before publish. The build output in `dist/` is included in the package via the `files` field.
 
 ---
 
@@ -58,7 +74,7 @@ const client = new SendAfricaClient({
   apiKey: process.env.SENDAFRICA_API_KEY!, // starts with "SA-"
 });
 
-const result = await client.sendSms({
+const result = await client.sms.send({
   to: '0712345678',
   message: 'Your order has been confirmed.',
 });
@@ -82,13 +98,17 @@ The SDK requires an API key. Pass it directly to the constructor:
 const client = new SendAfricaClient({ apiKey: 'SA-xxxxx' });
 ```
 
-Every request includes an `X-API-Key: <key>` header. The SDK also sends a
-`User-Agent: sendafrica-node/1.0` header and a unique `X-Request-Id` UUID
-per request for tracing.
+Every authenticated request includes both headers:
 
-> **Note:** Unlike the Python SDK, the TypeScript SDK does not auto-resolve
-> from `SENDAFRICA_API_KEY`. You must pass `apiKey` explicitly or read the
-> env var yourself.
+```
+X-API-Key: <api_key>
+Authorization: Bearer <api_key>
+```
+
+This dual-header approach ensures compatibility with all SendAfrica API keys. JWT-based
+operations (e.g. message logs fetched with a dashboard token) use `Authorization: Bearer <jwt>` only.
+The SDK also sends a `User-Agent: sendafrica-node/1.1` header and a unique `X-Request-Id` UUID
+per request for tracing.
 
 ---
 
@@ -118,22 +138,31 @@ const client = new SendAfricaClient({
 
 | Resource | Methods |
 |---|---|
-| `client.sendSms()` | Send a single SMS |
-| `client.getBalance()` | Check credit balance |
-| `client.getVoucherRate()` | Fetch pricing tiers |
-| `client.createVoucher()` | Top up via mobile money |
-| `client.getCreditHistory()` | List credit transactions |
-| `client.getMessageLogs()` | List SMS delivery logs |
+| `client.sms.send()` | Send a single SMS |
+| `client.sms.bulk()` | Send to many recipients in one API call (up to 100) |
+| `client.sms.sendMany()` | Send to many recipients via individual calls with rate limiting |
+| `client.sms.logs()` | List SMS delivery logs (requires JWT) |
+| `client.credits.balance()` | Check credit balance |
+| `client.credits.history()` | List credit transactions |
+| `client.rates.list()` | Fetch the full rate card |
+| `client.rates.get(country)` | Fetch rate for a single country |
+| `client.senderIds.list()` | List registered sender IDs |
+| `client.senderIds.create()` | Submit a new sender ID request |
+| `client.senderIds.get(id)` | Fetch sender ID detail |
+| `client.senderIds.usable()` | List usable sender IDs |
+| `client.senderIds.requirements()` | Fetch sender ID registration requirements |
+| `client.payments.rate()` | Fetch voucher pricing tiers |
+| `client.payments.create()` | Top up via mobile money |
 
 ### SMS
 
-#### `client.sendSms(params, options?)`
+#### `client.sms.send(params, options?)`
 
 Send a single SMS. Phone numbers are normalized locally to E.164 before
 any network call.
 
 ```ts
-const result = await client.sendSms(
+const result = await client.sms.send(
   { to: '0712345678', message: 'Your OTP is 123456', from: 'MyBrand' },
   { idempotencyKey: 'order-4821-confirmation' },  // optional, reuse on retry
 );
@@ -174,10 +203,10 @@ console.log(result.creditsUsed);  // 1
 
 ### Credits
 
-#### `client.getBalance()`
+#### `client.credits.balance()`
 
 ```ts
-const { balance, accountId } = await client.getBalance();
+const { accountId, balance } = await client.credits.balance();
 console.log(accountId);  // "acc_abc123"
 console.log(balance);    // 4820
 ```
@@ -189,12 +218,12 @@ console.log(balance);    // 4820
 | `accountId` | `string` | Account identifier |
 | `balance` | `number` | Current credit balance |
 
-#### `client.getCreditHistory(query?)`
+#### `client.credits.history(query?)`
 
 List credit transactions with page-based pagination.
 
 ```ts
-const history = await client.getCreditHistory({ page: 1, perPage: 25 });
+const history = await client.credits.history({ page: 1, perPage: 25 });
 console.log(history);
 ```
 
@@ -214,13 +243,13 @@ Credit top-ups are pay-as-you-go: you specify any TZS amount (above
 the minimum) and the API converts it to credits at the current tiered
 rate.
 
-#### `client.getVoucherRate()`
+#### `client.payments.rate()`
 
 Fetch the current pricing schedule: minimum top-up amount and the
 tiered TZS-per-credit rate table.
 
 ```ts
-const rate = await client.getVoucherRate();
+const rate = await client.payments.rate();
 console.log(`Minimum top-up: ${rate.minAmountTzs} TZS`);
 
 for (const tier of rate.tiers) {
@@ -242,10 +271,10 @@ Where each `VoucherRateTier` is:
 | `maxAmountTzs` | `number` | Upper bound (0 = unbounded/top tier) |
 | `rateTzsPerCredit` | `number` | Price per credit in TZS |
 
-Use this to validate an amount client-side before calling `createVoucher()`:
+Use this to validate an amount client-side before calling `client.payments.create()`:
 
 ```ts
-const rate = await client.getVoucherRate();
+const rate = await client.payments.rate();
 const amountTzs = 30000;
 
 if (amountTzs < rate.minAmountTzs) {
@@ -253,14 +282,14 @@ if (amountTzs < rate.minAmountTzs) {
 }
 ```
 
-#### `client.createVoucher(params, options?)`
+#### `client.payments.create(params, options?)`
 
 ```ts
-const voucher = await client.createVoucher({ provider: 'snippe', amount: 50000 });
+const voucher = await client.payments.create({ provider: 'snippe', amount: 50000 });
 console.log(voucher.id, voucher.status, voucher.creditAmount);
 // voucher.status === 'pending' -- mobile-money top-ups always charge YOUR
 // account's own verified phone number, never one you supply.
-// There's no status-poll endpoint: poll getBalance() or watch for a
+// There's no status-poll endpoint: poll `client.credits.balance()` or watch for a
 // confirmation notification instead.
 ```
 
@@ -285,13 +314,13 @@ console.log(voucher.id, voucher.status, voucher.creditAmount);
 
 ### Message Logs
 
-#### `client.getMessageLogs(jwtToken, query?)`
+#### `client.sms.logsJwt(jwtToken, query?)`
 
-Message logs require a **JWT** (dashboard login token) -- not the API
+Message logs require a **JWT** (dashboard login token) — not the API
 key. Pass it explicitly; it's never mixed with `X-API-Key`.
 
 ```ts
-const logs = await client.getMessageLogs(jwtToken, { status: 'failed', page: 1 });
+const logs = await client.sms.logsJwt(jwtToken, { status: 'failed', page: 1 });
 
 for (const entry of logs.items) {
   console.log(entry.id, entry.toPhone, entry.status);
@@ -398,7 +427,7 @@ Segmentation rules:
   67 when concatenated
 
 > **Note:** `creditsRequired` is an estimate for UI display. The authoritative
-> number is `creditsUsed` on the `SendSmsResult` from `client.sendSms()`.
+> number is `creditsUsed` on the `SendSmsResult` from `client.sms.send()`.
 
 ---
 
@@ -411,7 +440,7 @@ generic handling, or use the convenience getters for quick discrimination:
 import { SendAfricaError } from 'sendafrica';
 
 try {
-  await client.sendSms({ to: '0712345678', message: 'Hi' });
+  await client.sms.send({ to: '0712345678', message: 'Hi' });
 } catch (err) {
   if (err instanceof SendAfricaError) {
     if (err.isInsufficientCredits) {
@@ -473,7 +502,7 @@ For a handful of numbers, space out calls yourself:
 ```ts
 for (const to of numbers) {
   try {
-    await client.sendSms({ to, message });
+    await client.sms.send({ to, message });
   } catch (err) {
     console.error(to, err);
   }
@@ -497,7 +526,7 @@ These are practical patterns for getting the most out of the SDK.
 Avoid `SendAfricaError` with code `insufficient_credits` by checking first:
 
 ```ts
-const { balance } = await client.getBalance();
+const { balance } = await client.credits.balance();
 if (balance < 10) {
   console.log(`Low balance: ${balance} credits remaining`);
   // prompt user to top up
@@ -524,7 +553,7 @@ SDK retries automatically. Use an idempotency key to prevent duplicate
 messages:
 
 ```ts
-await client.sendSms(
+await client.sms.send(
   { to: '0712345678', message: 'Order confirmed' },
   { idempotencyKey: `order-${orderId}-confirmation` },
 );
@@ -537,10 +566,10 @@ you have:
 
 ```ts
 // All of these work:
-await client.sendSms({ to: '0712345678', message: 'Hello' });
-await client.sendSms({ to: '+255712345678', message: 'Hello' });
-await client.sendSms({ to: '255712345678', message: 'Hello' });
-await client.sendSms({ to: '+255 712 345 678', message: 'Hello' });
+await client.sms.send({ to: '0712345678', message: 'Hello' });
+await client.sms.send({ to: '+255712345678', message: 'Hello' });
+await client.sms.send({ to: '255712345678', message: 'Hello' });
+await client.sms.send({ to: '+255 712 345 678', message: 'Hello' });
 ```
 
 ### Lesson 5: Catch specific errors
@@ -550,7 +579,7 @@ getters for better UX:
 
 ```ts
 try {
-  await client.sendSms({ to: '0712345678', message: 'Hello' });
+  await client.sms.send({ to: '0712345678', message: 'Hello' });
 } catch (err) {
   if (err instanceof InvalidPhoneNumberError) {
     // Show "Please check the phone number"
@@ -569,7 +598,7 @@ automatically with exponential backoff:
 
 ```ts
 // This is safe -- the SDK retries transient failures internally
-const result = await client.sendSms({ to: '0712345678', message: 'Hello' });
+const result = await client.sms.send({ to: '0712345678', message: 'Hello' });
 ```
 
 ### Lesson 7: Use injectable fetch for testing
@@ -586,7 +615,7 @@ const fetchMock = vi.fn().mockResolvedValue(
 );
 
 const client = new SendAfricaClient({ apiKey: 'SA-test', fetch: fetchMock });
-const result = await client.sendSms({ to: '0712345678', message: 'Test' });
+const result = await client.sms.send({ to: '0712345678', message: 'Test' });
 // result.messageId === 'test-123'
 ```
 
@@ -597,7 +626,7 @@ This is by design (the API uses two separate auth systems):
 
 ```ts
 const jwtToken = '...'; // from dashboard login
-const logs = await client.getMessageLogs(jwtToken, { status: 'failed' });
+const logs = await client.sms.logsJwt(jwtToken, { status: 'failed' });
 ```
 
 ---
@@ -607,11 +636,17 @@ const logs = await client.getMessageLogs(jwtToken, { status: 'failed' });
 ```
 src/
 ├── index.ts            # Public API exports
-├── client.ts           # SendAfricaClient (HTTP, retry, auth)
-├── types.ts            # All request/response type definitions
+├── client.ts           # SendAfricaClient (HTTP, retry, auth, resource wiring)
+├── types.ts            # All request/response type definitions + model factories
 ├── errors.ts           # SendAfricaError, SendAfricaNetworkError, InvalidPhoneNumberError
 ├── phone.ts            # TZ mobile number normalization
-└── sms-parts.ts        # GSM-7/UCS-2 encoding + segment analysis
+├── sms-parts.ts        # GSM-7/UCS-2 encoding + segment analysis
+└── resources/
+    ├── sms.ts          # SMSResource: send, sendMany, bulk, logs
+    ├── credits.ts      # CreditsResource: balance, history
+    ├── rates.ts        # RatesResource: list, get
+    ├── senderids.ts    # SenderIDsResource: list, create, get, usable, requirements
+    └── payments.ts     # PaymentsResource: rate, create
 test/
 ├── client.test.ts      # Client HTTP, retry, error handling tests
 ├── phone.test.ts       # Phone normalization tests
@@ -622,11 +657,10 @@ test/
 
 ## Roadmap
 
-- **Phase 1 (done):** Client, auth, SMS send, credits balance/history,
-  vouchers top-up/rate, message logs, error hierarchy, response types,
-  phone normalization, SMS part calculator, retry/backoff, idempotency
-- **Phase 2:** Bulk SMS via server-side endpoint, webhook signature
-  verification, credit history typing
+- **Phase 1 (done):** Client, auth (X-API-Key + Bearer fallback), SMS send/bulk/sendMany, credits balance/history,
+  rates list/get, sender IDs (list/create/get/usable/requirements), payments (rate/create), message logs,
+  error hierarchy, response types, phone normalization, SMS part calculator, retry/backoff, idempotency
+- **Phase 2:** Webhook signature verification, async client
 - **Phase 3:** Campaigns, contacts, templates, scheduling
 
 ---

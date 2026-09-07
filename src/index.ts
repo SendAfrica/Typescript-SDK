@@ -25,4 +25,38 @@ export type {
   MessageLogsQuery,
   MessageLogsResult,
   CreditHistoryQuery,
+  CreditBalance,
+  CreditTransaction,
+  VoucherRate,
+  SenderID,
+  SenderIDEligibility,
+  SenderIDRules,
+  SenderIDCountry,
+  SenderIDDocumentRequirement,
+  SenderIDRequirements,
+  UsableSenderID,
+  RateInfo,
+  ProviderBulkSMSRate,
+  ProviderOperatorRate,
 } from './types';
+
+export {
+  CreditBalanceModel,
+  CreditTransactionModel,
+  VoucherRateModel,
+  VoucherResultModel,
+  RateInfoModel,
+  SenderIDModel,
+  SenderIDEligibilityModel,
+  SenderIDRulesModel,
+  SenderIDRequirementsModel,
+  UsableSenderIDModel,
+} from './types';
+
+export {
+  SMSResource,
+  RatesResource,
+  SenderIDsResource,
+  CreditsResource,
+  PaymentsResource,
+} from './resources';
