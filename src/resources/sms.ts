@@ -324,7 +324,7 @@ export interface RequestFnOptions {
 }
 
 export type RequestFn = <T = unknown>(
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PUT',
   path: string,
   opts?: RequestFnOptions
 ) => Promise<{ success: boolean; data?: T; error?: { code: string; message: string }; request_id?: string; timestamp?: string }>;

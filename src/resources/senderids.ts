@@ -60,4 +60,12 @@ export class SenderIDsResource {
     const envelope = await this.makeRequest('GET', `/sender-ids/${senderId}`, { useApiKey: true });
     return SenderIDModel.fromDict(envelope.data!);
   }
+
+  async setDefault(senderId: string): Promise<SenderID> {
+    const envelope = await this.makeRequest('PUT', '/sender-ids/default', {
+      body: { sender_id: senderId },
+      useApiKey: true,
+    });
+    return SenderIDModel.fromDict(envelope.data!);
+  }
 }

@@ -84,7 +84,7 @@ export interface CreditHistoryQuery {
 
 // ─── Voucher / Payment Types ──────────────────────────────────────────────────
 
-export type VoucherProvider = 'snippe';
+export type VoucherProvider = 'manual' | 'snippe' | 'card' | (string & {});
 
 export interface VoucherRateTier {
   maxAmountTzs: number;
@@ -93,6 +93,7 @@ export interface VoucherRateTier {
 
 export interface VoucherRate {
   minAmountTzs: number;
+  rateTzsPerCredit?: number;
   tiers: VoucherRateTier[];
 }
 
@@ -104,6 +105,13 @@ export interface VoucherRateResult {
 export interface CreateVoucherParams {
   provider: VoucherProvider;
   amount: number;
+  phone?: string;
+  card?: Record<string, unknown>;
+}
+
+export interface DeclaredPhoneOtpResult {
+  sent?: boolean;
+  verified?: boolean;
 }
 
 export type VoucherStatus = 'pending' | 'confirmed' | 'failed' | (string & {});
@@ -172,6 +180,7 @@ export interface SenderID {
   sampleMessage: string;
   status: string;
   isUsable: boolean;
+  isDefault: boolean;
   rejectionReason: string | null;
   errorReason: string | null;
   submittedAt: string | null;
@@ -242,6 +251,7 @@ export const VoucherRateModel = {
   fromDict(data: any): VoucherRate {
     return {
       minAmountTzs: data.min_amount_tzs,
+      rateTzsPerCredit: data.rate_tzs_per_credit,
       tiers: (data.tiers ?? []).map((t: any) => ({
         maxAmountTzs: t.max_amount_tzs,
         rateTzsPerCredit: t.rate_tzs_per_credit,
@@ -305,6 +315,7 @@ export const SenderIDModel = {
       sampleMessage: data.sample_message,
       status: data.status,
       isUsable: data.is_usable,
+      isDefault: data.is_default ?? false,
       rejectionReason: data.rejection_reason ?? null,
       errorReason: data.last_error ?? null,
       submittedAt: data.submitted_at ?? null,

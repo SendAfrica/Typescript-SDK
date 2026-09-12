@@ -18,6 +18,7 @@ export type {
   VoucherRateTier,
   VoucherRateResult,
   CreateVoucherParams,
+  DeclaredPhoneOtpResult,
   VoucherStatus,
   VoucherResult,
   MessageStatus,

@@ -74,7 +74,7 @@ export class SendAfricaClient {
   }
 
   private async request<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     path: string,
     opts: RequestOptions = {}
   ): Promise<RawEnvelope<T>> {

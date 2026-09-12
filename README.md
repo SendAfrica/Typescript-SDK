@@ -45,7 +45,7 @@ custom `fetch` implementation.
 
 1. Ensure you're logged in to npm: `npm login` (if needed)
 2. Ensure you have publish rights for the `sendafrica` package on npm
-3. Bump the version in `package.json` (following SemVer — we use 1.1.0 to match the Python SDK)
+3. Bump the version in `package.json` following SemVer
 4. Run the full verification:
    ```bash
    npm run typecheck
@@ -151,8 +151,11 @@ const client = new SendAfricaClient({
 | `client.senderIds.get(id)` | Fetch sender ID detail |
 | `client.senderIds.usable()` | List usable sender IDs |
 | `client.senderIds.requirements()` | Fetch sender ID registration requirements |
-| `client.payments.rate()` | Fetch voucher pricing tiers |
-| `client.payments.create()` | Top up via mobile money |
+| `client.senderIds.setDefault(id)` | Set an approved account sender ID as default |
+| `client.payments.rate()` | Fetch current voucher pricing |
+| `client.payments.create()` | Top up via manual, mobile money, or card provider |
+| `client.payments.sendDeclaredPhoneOtp()` | Send declared payer phone OTP |
+| `client.payments.verifyDeclaredPhoneOtp()` | Verify declared payer phone OTP |
 
 ### SMS
 
@@ -240,17 +243,17 @@ the API's response schema stabilizing)
 ### Vouchers / Top-up
 
 Credit top-ups are pay-as-you-go: you specify any TZS amount (above
-the minimum) and the API converts it to credits at the current tiered
-rate.
+the minimum) and the API converts it to credits at the current rate.
 
 #### `client.payments.rate()`
 
-Fetch the current pricing schedule: minimum top-up amount and the
-tiered TZS-per-credit rate table.
+Fetch the current pricing: minimum top-up amount and the current flat
+TZS-per-credit rate. Legacy tier responses remain supported.
 
 ```ts
 const rate = await client.payments.rate();
 console.log(`Minimum top-up: ${rate.minAmountTzs} TZS`);
+console.log(`Rate: ${rate.rateTzsPerCredit} TZS/credit`);
 
 for (const tier of rate.tiers) {
   console.log(`  Up to ${tier.maxAmountTzs} TZS: ${tier.rateTzsPerCredit} TZS/credit`);
@@ -262,7 +265,8 @@ for (const tier of rate.tiers) {
 | Field | Type | Description |
 |---|---|---|
 | `minAmountTzs` | `number` | Minimum top-up amount in TZS |
-| `tiers` | `VoucherRateTier[]` | Pricing tiers |
+| `rateTzsPerCredit` | `number \| undefined` | Current price per credit |
+| `tiers` | `VoucherRateTier[]` | Legacy pricing tiers, if returned |
 
 Where each `VoucherRateTier` is:
 
@@ -286,6 +290,15 @@ if (amountTzs < rate.minAmountTzs) {
 
 ```ts
 const voucher = await client.payments.create({ provider: 'snippe', amount: 50000 });
+
+// Pay from a different declared Tanzanian phone number.
+await client.payments.sendDeclaredPhoneOtp('0712345678');
+await client.payments.verifyDeclaredPhoneOtp('0712345678', '123456');
+await client.payments.create({
+  provider: 'snippe',
+  amount: 50000,
+  phone: '0712345678',
+});
 console.log(voucher.id, voucher.status, voucher.creditAmount);
 // voucher.status === 'pending' -- mobile-money top-ups always charge YOUR
 // account's own verified phone number, never one you supply.
@@ -646,7 +659,7 @@ src/
     ├── credits.ts      # CreditsResource: balance, history
     ├── rates.ts        # RatesResource: list, get
     ├── senderids.ts    # SenderIDsResource: list, create, get, usable, requirements
-    └── payments.ts     # PaymentsResource: rate, create
+    └── payments.ts     # PaymentsResource: rate, create, payer OTP
 test/
 ├── client.test.ts      # Client HTTP, retry, error handling tests
 ├── phone.test.ts       # Phone normalization tests
@@ -658,7 +671,7 @@ test/
 ## Roadmap
 
 - **Phase 1 (done):** Client, auth (X-API-Key + Bearer fallback), SMS send/bulk/sendMany, credits balance/history,
-  rates list/get, sender IDs (list/create/get/usable/requirements), payments (rate/create), message logs,
+  rates list/get, sender IDs (list/create/get/usable/requirements/setDefault), payments (rate/create/OTP), message logs,
   error hierarchy, response types, phone normalization, SMS part calculator, retry/backoff, idempotency
 - **Phase 2:** Webhook signature verification, async client
 - **Phase 3:** Campaigns, contacts, templates, scheduling
